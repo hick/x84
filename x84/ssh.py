@@ -60,7 +60,7 @@ class SshClient(BaseClient):
             self.log.debug('{self.addrport}: channel shutdown '
                            '{self.__class__.__name__}'.format(self=self))
 
-        if self.transport.is_active():
+        if self.transport is not None and self.transport.is_active():
             self.transport.close()
             self.log.debug('{self.addrport}: transport shutdown '
                            '{self.__class__.__name__}'.format(self=self))
@@ -123,7 +123,7 @@ class SshClient(BaseClient):
         """
         Returns True if data is awaiting on the ssh channel.
         """
-        if self.channel is None:
+        if self.channel is None or self.kind == 'sftp':
             # channel has not yet been negotiated
             return False
         return self.channel.recv_ready()
@@ -182,6 +182,7 @@ class ConnectSsh(BaseConnect):
                 'sftp',
                 paramiko.SFTPServer,
                 StubSFTPServer)
+
             ssh_session = SshSessionServer(client=self.client)
 
             def detected():
@@ -206,21 +207,26 @@ class ConnectSsh(BaseConnect):
                 self.client.deactivate()
                 return
 
-            self.log.debug('{client.addrport}: waiting for shell request'
-                           .format(client=self.client))
-
+            first_log = False
             while not detected() and self._timeleft(st_time):
+                if not first_log:
+                    self.log.debug('{client.addrport}: waiting for '
+                                   'shell or subsystem request.'
+                                   .format(client=self.client))
+                    first_log = True
+
                 if not self.client.is_active():
+                    self.log.debug('{client.addrport}: transport closed '
+                                   'while waiting for shell or subsystem '
+                                   'request.'
+                                   .format(client=self.client))
                     self.client.deactivate()
                     return
-                self.log.debug('poll')
                 time.sleep(self.TIME_POLL)
 
             if detected():
-                self.log.info('Starting shell session')
                 matrix_kwargs = {attr: getattr(ssh_session, attr)
-                                 for attr in ('anonymous', 'new',
-                                              'username', 'sftp')}
+                                 for attr in ('anonymous', 'new', 'username',)}
                 return spawn_client_session(client=self.client,
                                             matrix_kwargs=matrix_kwargs)
 
@@ -250,7 +256,7 @@ class ConnectSsh(BaseConnect):
                     time.time() - st_time < self.TIME_WAIT_STAGE)
 
 
-class SshSessionServer(paramiko.ServerInterface):
+class SshSessionServer(paramiko.ServerInterface, ):
     def __init__(self, client):
         self.shell_requested = threading.Event()
         self.sftp_requested = threading.Event()
@@ -346,11 +352,12 @@ class SshSessionServer(paramiko.ServerInterface):
     def check_channel_subsystem_request(self, channel, name):
         if name == 'sftp':
             self.log.debug('sftp subsystem granted.')
-            self.sftp = True
+            self.client.kind = 'sftp'
             self.sftp_requested.set()
-        super(SshSessionServer, self
-              ).check_channel_subsystem_request(channel, name)
-        return True
+            self.sftp = True
+
+        return (super(SshSessionServer, self)
+                .check_channel_subsystem_request(channel, name))
 
     def check_channel_pty_request(self, channel, term, width, height, *_):
         self.client.env['TERM'] = term
