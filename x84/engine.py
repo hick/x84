@@ -256,9 +256,7 @@ def client_recv(servers, log):
         for client in server.clients.values():
             if client.recv_ready():
                 try:
-                    n_bytes = client.socket_recv()
-                    log.debug('{client.addrport}: recv {n_bytes} bytes'
-                              .format(client=client, n_bytes=n_bytes))
+                    client.socket_recv()
                 except Disconnected as err:
                     log.debug('{client.addrport}: disconnect on recv: {err}'
                               .format(client=client, err=err))
@@ -277,9 +275,7 @@ def client_send(terminals, log):
     for sid, tty in terminals:
         if tty.client.send_ready():
             try:
-                n_bytes = tty.client.send()
-                log.debug('{client.addrport}: send {n_bytes} bytes'
-                          .format(client=tty.client, n_bytes=n_bytes))
+                tty.client.send()
             except Disconnected as err:
                 log.debug('{client.addrport}: disconnect on send: {err}'
                           .format(client=tty.client, err=err))
