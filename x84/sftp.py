@@ -20,32 +20,38 @@
 A stub SFTP server for loopback SFTP testing.
 """
 
+# std imports
+import logging
 import os
-from paramiko import ServerInterface, SFTPServerInterface, SFTPServer, SFTPAttributes, \
-    SFTPHandle, SFTP_OK, AUTH_SUCCESSFUL, OPEN_SUCCEEDED
 
-
-class StubServer (ServerInterface):
-    def check_auth_password(self, username, password):
-        # all are allowed
-        return AUTH_SUCCESSFUL
-        
-    def check_auth_publickey(self, username, key):
-        # all are allowed
-        return AUTH_SUCCESSFUL
-        
-    def check_channel_request(self, kind, chanid):
-        return OPEN_SUCCEEDED
+# 3rd-party
+from paramiko import (
+    ServerInterface,
+    SFTPServerInterface,
+    SFTPServer,
+    SFTPAttributes,
+    SFTPHandle,
+    SFTP_OK,
+    AUTH_SUCCESSFUL,
+    OPEN_SUCCEEDED
+)
 
 
 class StubSFTPHandle (SFTPHandle):
+
+    def __init__(self, *args, **kwargs):
+        self.log = logging.getLogger(self.__class__.__name__)
+        super(StubSFTPHandle, self).__init__(*args, **kwargs)
+
     def stat(self):
+        self.log.debug('stat')
         try:
             return SFTPAttributes.from_stat(os.fstat(self.readfile.fileno()))
         except OSError as e:
             return SFTPServer.convert_errno(e.errno)
 
     def chattr(self, attr):
+        self.log.debug('chattr ({0!r})'.format(attr))
         # python doesn't have equivalents to fchown or fchmod, so we have to
         # use the stored filename
         try:
@@ -57,19 +63,27 @@ class StubSFTPHandle (SFTPHandle):
 
 class StubSFTPServer (SFTPServerInterface):
     # assume current folder is a fine root
-    # (the tests always create and eventualy delete a subfolder, so there shouldn't be any mess)
+    # (the tests always create and eventually delete a subfolder,
+    #  so there shouldn't be any mess)
     ROOT = os.getcwd()
-        
+
+    def __init__(self, *args, **kwargs):
+        self.log = logging.getLogger(self.__class__.__name__)
+        super(StubSFTPServer, self).__init__(*args, **kwargs)
+
     def _realpath(self, path):
+        self.log.debug('_realpath({0!r})'.format(path))
         return self.ROOT + self.canonicalize(path)
 
     def list_folder(self, path):
+        self.log.debug('list_folder({0!r})'.format(path))
         path = self._realpath(path)
         try:
-            out = [ ]
+            out = []
             flist = os.listdir(path)
             for fname in flist:
-                attr = SFTPAttributes.from_stat(os.stat(os.path.join(path, fname)))
+                attr = SFTPAttributes.from_stat(
+                    os.stat(os.path.join(path, fname)))
                 attr.filename = fname
                 out.append(attr)
             return out
@@ -77,6 +91,7 @@ class StubSFTPServer (SFTPServerInterface):
             return SFTPServer.convert_errno(e.errno)
 
     def stat(self, path):
+        self.log.debug('stat({0!r})'.format(path))
         path = self._realpath(path)
         try:
             return SFTPAttributes.from_stat(os.stat(path))
@@ -84,6 +99,7 @@ class StubSFTPServer (SFTPServerInterface):
             return SFTPServer.convert_errno(e.errno)
 
     def lstat(self, path):
+        self.log.debug('lstat({0!r})'.format(path))
         path = self._realpath(path)
         try:
             return SFTPAttributes.from_stat(os.lstat(path))
@@ -91,6 +107,8 @@ class StubSFTPServer (SFTPServerInterface):
             return SFTPServer.convert_errno(e.errno)
 
     def open(self, path, flags, attr):
+        self.log.debug('lstat({0!r}, {1!r}, {2!r})'
+                       .format(path, flags, attr))
         path = self._realpath(path)
         try:
             binary_flag = getattr(os, 'O_BINARY',  0)
@@ -131,6 +149,7 @@ class StubSFTPServer (SFTPServerInterface):
         return fobj
 
     def remove(self, path):
+        self.log.debug('remove({0!r})'.format(path))
         path = self._realpath(path)
         try:
             os.remove(path)
@@ -139,6 +158,7 @@ class StubSFTPServer (SFTPServerInterface):
         return SFTP_OK
 
     def rename(self, oldpath, newpath):
+        self.log.debug('rename({0!r}, {1!r})'.format(oldpath, newpath))
         oldpath = self._realpath(oldpath)
         newpath = self._realpath(newpath)
         try:
@@ -148,6 +168,7 @@ class StubSFTPServer (SFTPServerInterface):
         return SFTP_OK
 
     def mkdir(self, path, attr):
+        self.log.debug('mkdir({0!r}, {1!r})'.format(path, attr))
         path = self._realpath(path)
         try:
             os.mkdir(path)
@@ -158,6 +179,7 @@ class StubSFTPServer (SFTPServerInterface):
         return SFTP_OK
 
     def rmdir(self, path):
+        self.log.debug('rmdir({0!r})'.format(path))
         path = self._realpath(path)
         try:
             os.rmdir(path)
@@ -166,6 +188,7 @@ class StubSFTPServer (SFTPServerInterface):
         return SFTP_OK
 
     def chattr(self, path, attr):
+        self.log.debug('chattr({0!r})'.format(path))
         path = self._realpath(path)
         try:
             SFTPServer.set_file_attr(path, attr)
@@ -174,6 +197,7 @@ class StubSFTPServer (SFTPServerInterface):
         return SFTP_OK
 
     def symlink(self, target_path, path):
+        self.log.debug('symlink({0!r}, {1!r})'.format(target_path, path))
         path = self._realpath(path)
         if (len(target_path) > 0) and (target_path[0] == '/'):
             # absolute symlink
@@ -185,7 +209,8 @@ class StubSFTPServer (SFTPServerInterface):
             # compute relative to path
             abspath = os.path.join(os.path.dirname(path), target_path)
             if abspath[:len(self.ROOT)] != self.ROOT:
-                # this symlink isn't going to work anyway -- just break it immediately
+                # this symlink isn't going to work anyway
+                # -- just break it immediately
                 target_path = '<error>'
         try:
             os.symlink(target_path, path)
@@ -194,6 +219,7 @@ class StubSFTPServer (SFTPServerInterface):
         return SFTP_OK
 
     def readlink(self, path):
+        self.log.debug('readlink({0!r})'.format(path))
         path = self._realpath(path)
         try:
             symlink = os.readlink(path)
