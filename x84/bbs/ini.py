@@ -177,6 +177,7 @@ def init_bbs_ini():
     cfg_bbs.set('matrix', 'script', 'matrix')
     cfg_bbs.set('matrix', 'script_telnet', 'matrix')
     cfg_bbs.set('matrix', 'script_ssh', 'matrix_ssh')
+    cfg_bbs.set('matrix', 'script_sftp', 'matrix_sftp')
     cfg_bbs.set('matrix', 'topscript', 'top')
     cfg_bbs.set('matrix', 'enable_anonymous', 'no')
     cfg_bbs.set('matrix', 'enable_pwreset', 'yes')
