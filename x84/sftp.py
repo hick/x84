@@ -26,14 +26,11 @@ import os
 
 # 3rd-party
 from paramiko import (
-    ServerInterface,
     SFTPServerInterface,
     SFTPServer,
     SFTPAttributes,
     SFTPHandle,
     SFTP_OK,
-    AUTH_SUCCESSFUL,
-    OPEN_SUCCEEDED
 )
 
 
