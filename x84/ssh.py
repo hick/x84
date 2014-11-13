@@ -147,6 +147,7 @@ class SshClient(BaseClient):
         self.bytes_received += recv
         self.last_input_time = time.time()
         self.recv_buffer.fromstring(data)
+        return recv
 
 
 class ConnectSsh(BaseConnect):
@@ -177,14 +178,15 @@ class ConnectSsh(BaseConnect):
             self.client.transport = paramiko.Transport(self.client.sock)
             self.client.transport.load_server_moduli()
             self.client.transport.add_server_key(self.server_host_key)
-            self.client.transport.set_subsystem_handler('sftp', paramiko.SFTPServer, StubSFTPServer)
+            self.client.transport.set_subsystem_handler(
+                'sftp',
+                paramiko.SFTPServer,
+                StubSFTPServer)
             ssh_session = SshSessionServer(client=self.client)
 
             def detected():
-                return ssh_session.shell_requested.isSet()
-
-            def sftp_detected():
-                return ssh_session.sftp_requested.isSet()
+                return (ssh_session.shell_requested.isSet() or
+                        ssh_session.sftp_requested.isSet())
 
             self.client.transport.start_server(server=ssh_session)
 
@@ -207,19 +209,18 @@ class ConnectSsh(BaseConnect):
             self.log.debug('{client.addrport}: waiting for shell request'
                            .format(client=self.client))
 
-            while not detected() and not sftp_detected() and self._timeleft(st_time):
+            while not detected() and self._timeleft(st_time):
                 if not self.client.is_active():
                     self.client.deactivate()
                     return
+                self.log.debug('poll')
                 time.sleep(self.TIME_POLL)
 
-            if sftp_detected():
-                while self.client.transport.is_active():
-                    time.sleep(1)
-                return
-            elif detected():
+            if detected():
+                self.log.info('Starting shell session')
                 matrix_kwargs = {attr: getattr(ssh_session, attr)
-                                 for attr in ('anonymous', 'new', 'username')}
+                                 for attr in ('anonymous', 'new',
+                                              'username', 'sftp')}
                 return spawn_client_session(client=self.client,
                                             matrix_kwargs=matrix_kwargs)
 
@@ -260,9 +261,11 @@ class SshSessionServer(paramiko.ServerInterface):
         self.new = False
         self.anonymous = False
         self.username = None
+        self.sftp = False
 
     def check_channel_request(self, kind, chanid):
         if kind == 'session':
+            self.log.debug('channel request granted, kind={0}'.format(kind))
             return paramiko.OPEN_SUCCEEDED
         self.log.debug('channel request denied, kind={0}'.format(kind))
         return paramiko.OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED
@@ -336,13 +339,17 @@ class SshSessionServer(paramiko.ServerInterface):
         return 'password,publickey'
 
     def check_channel_shell_request(self, channel):
+        self.log.debug('ssh channel granted.')
         self.shell_requested.set()
         return True
 
     def check_channel_subsystem_request(self, channel, name):
-        super(self.__class__, self).check_channel_subsystem_request(channel, name)
         if name == 'sftp':
+            self.log.debug('sftp subsystem granted.')
+            self.sftp = True
             self.sftp_requested.set()
+        super(SshSessionServer, self
+              ).check_channel_subsystem_request(channel, name)
         return True
 
     def check_channel_pty_request(self, channel, term, width, height, *_):
@@ -362,6 +369,7 @@ class SshSessionServer(paramiko.ServerInterface):
         self.log.debug('env request: [{0}] = {1}'.format(name, value))
         self.client.env[name] = value
         return True
+
 
 class SshServer(BaseServer):
     """
