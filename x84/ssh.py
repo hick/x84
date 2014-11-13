@@ -22,6 +22,7 @@ from x84.bbs.userbase import (
 from x84.terminal import spawn_client_session, on_naws
 from x84.client import BaseClient, BaseConnect
 from x84.server import BaseServer
+from x84.sftp import StubSFTPServer
 
 # 3rd-party
 import paramiko
@@ -181,7 +182,12 @@ class ConnectSsh(BaseConnect):
             def detected():
                 return ssh_session.shell_requested.isSet()
 
-            self.client.transport.start_server(server=ssh_session)
+            def sftp_detected():
+                return ssh_session.sftp_requested.isSet()
+
+            event = threading.Event()
+            self.client.transport.set_subsystem_handler('sftp', paramiko.SFTPServer, StubSFTPServer)
+            self.client.transport.start_server(event=event, server=ssh_session)
 
             st_time = time.time()
             while self._timeleft(st_time):
@@ -202,13 +208,20 @@ class ConnectSsh(BaseConnect):
             self.log.debug('{client.addrport}: waiting for shell request'
                            .format(client=self.client))
 
-            while not detected() and self._timeleft(st_time):
+            while not detected() and not sftp_detected() and self._timeleft(st_time):
                 if not self.client.is_active():
                     self.client.deactivate()
                     return
                 time.sleep(self.TIME_POLL)
 
-            if detected():
+            if sftp_detected():
+                event.wait(1)
+                matrix_kwargs = {attr: getattr(ssh_session, attr)
+                                 for attr in ('anonymous', 'new', 'username')}
+                matrix_kwargs['sftp'] = self.client
+                return spawn_client_session(client=self.client,
+                                            matrix_kwargs=matrix_kwargs)
+            elif detected():
                 matrix_kwargs = {attr: getattr(ssh_session, attr)
                                  for attr in ('anonymous', 'new', 'username')}
                 return spawn_client_session(client=self.client,
@@ -243,6 +256,7 @@ class ConnectSsh(BaseConnect):
 class SshSessionServer(paramiko.ServerInterface):
     def __init__(self, client):
         self.shell_requested = threading.Event()
+        self.sftp_requested = threading.Event()
         self.log = logging.getLogger(__name__)
         self.client = client
 
@@ -327,6 +341,12 @@ class SshSessionServer(paramiko.ServerInterface):
 
     def check_channel_shell_request(self, channel):
         self.shell_requested.set()
+        return True
+
+    def check_channel_subsystem_request(self, channel, name):
+        super(self.__class__, self).check_channel_subsystem_request(channel, name)
+        if name == 'sftp':
+            self.sftp_requested.set()
         return True
 
     def check_channel_pty_request(self, channel, term, width, height, *_):

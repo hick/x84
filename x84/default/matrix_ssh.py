@@ -18,11 +18,30 @@
 """
 
 
-def main(anonymous=False, new=False, username=''):
+def main(anonymous=False, new=False, username='', sftp=False):
     """ Main procedure. """
-    from x84.bbs import echo, goto, find_user, ini
+    from x84.bbs import echo, goto, find_user, ini, getterminal
+    from x84custom import show_art
+
+    if sftp is not False:
+        import time
+        from x84.bbs import getsession, get_user
+
+        if not anonymous and username != '':
+            session = getsession()
+            session.user = get_user(username)
+            session.activity = 'Browsing files'
+
+        while sftp.is_active():
+            sftp.transport.send_ignore()
+            time.sleep(10)
+
+        sftp.deactivate()
+        return
+
     topscript = ini.CFG.get('matrix', 'topscript')
     nuascript = ini.CFG.get('nua', 'script')
+    term = getterminal()
 
     # http://www.termsys.demon.co.uk/vtansi.htm
     # disable line-wrapping
@@ -41,4 +60,9 @@ def main(anonymous=False, new=False, username=''):
 
     handle = find_user(username)
     assert handle is not None, handle
+    inp = show_art('login-*.ans')
+
+    if not inp:
+        inp = term.inkey()
+
     goto(topscript, handle=handle)
