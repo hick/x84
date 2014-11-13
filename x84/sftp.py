@@ -1,8 +1,41 @@
+# Copyright (C) 2003-2009  Robey Pointer <robeypointer@gmail.com>
+#
+# This file is part of paramiko.
+#
+# Paramiko is free software; you can redistribute it and/or modify it under the
+# terms of the GNU Lesser General Public License as published by the Free
+# Software Foundation; either version 2.1 of the License, or (at your option)
+# any later version.
+#
+# Paramiko is distrubuted in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+# A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with Paramiko; if not, write to the Free Software Foundation, Inc.,
+# 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+
+"""
+A stub SFTP server for loopback SFTP testing.
+"""
+
 import os
-import sys
 from paramiko import ServerInterface, SFTPServerInterface, SFTPServer, SFTPAttributes, \
-    SFTPHandle, SFTP_OK, SFTP_PERMISSION_DENIED, AUTH_SUCCESSFUL, OPEN_SUCCEEDED
-from paramiko.common import o666
+    SFTPHandle, SFTP_OK, AUTH_SUCCESSFUL, OPEN_SUCCEEDED
+
+
+class StubServer (ServerInterface):
+    def check_auth_password(self, username, password):
+        # all are allowed
+        return AUTH_SUCCESSFUL
+        
+    def check_auth_publickey(self, username, key):
+        # all are allowed
+        return AUTH_SUCCESSFUL
+        
+    def check_channel_request(self, kind, chanid):
+        return OPEN_SUCCEEDED
 
 
 class StubSFTPHandle (SFTPHandle):
@@ -13,7 +46,6 @@ class StubSFTPHandle (SFTPHandle):
             return SFTPServer.convert_errno(e.errno)
 
     def chattr(self, attr):
-        return SFTP_PERMISSION_DENIED
         # python doesn't have equivalents to fchown or fchmod, so we have to
         # use the stored filename
         try:
@@ -24,15 +56,17 @@ class StubSFTPHandle (SFTPHandle):
 
 
 class StubSFTPServer (SFTPServerInterface):
-    ROOT = '/home/haliphax/sftp' #os.getcwd()
-
+    # assume current folder is a fine root
+    # (the tests always create and eventualy delete a subfolder, so there shouldn't be any mess)
+    ROOT = os.getcwd()
+        
     def _realpath(self, path):
         return self.ROOT + self.canonicalize(path)
 
     def list_folder(self, path):
         path = self._realpath(path)
         try:
-            out = []
+            out = [ ]
             flist = os.listdir(path)
             for fname in flist:
                 attr = SFTPAttributes.from_stat(os.stat(os.path.join(path, fname)))
@@ -59,7 +93,7 @@ class StubSFTPServer (SFTPServerInterface):
     def open(self, path, flags, attr):
         path = self._realpath(path)
         try:
-            binary_flag = getattr(os, 'O_BINARY', 0)
+            binary_flag = getattr(os, 'O_BINARY',  0)
             flags |= binary_flag
             mode = getattr(attr, 'st_mode', None)
             if mode is not None:
@@ -67,7 +101,7 @@ class StubSFTPServer (SFTPServerInterface):
             else:
                 # os.open() defaults to 0777 which is
                 # an odd default mode for files
-                fd = os.open(path, flags, o666)
+                fd = os.open(path, flags, 0o666)
         except OSError as e:
             return SFTPServer.convert_errno(e.errno)
         if (flags & os.O_CREAT) and (attr is not None):
@@ -97,7 +131,6 @@ class StubSFTPServer (SFTPServerInterface):
         return fobj
 
     def remove(self, path):
-        return SFTP_PERMISSION_DENIED
         path = self._realpath(path)
         try:
             os.remove(path)
@@ -106,7 +139,6 @@ class StubSFTPServer (SFTPServerInterface):
         return SFTP_OK
 
     def rename(self, oldpath, newpath):
-        return SFTP_PERMISSION_DENIED
         oldpath = self._realpath(oldpath)
         newpath = self._realpath(newpath)
         try:
@@ -116,7 +148,6 @@ class StubSFTPServer (SFTPServerInterface):
         return SFTP_OK
 
     def mkdir(self, path, attr):
-        return SFTP_PERMISSION_DENIED
         path = self._realpath(path)
         try:
             os.mkdir(path)
@@ -127,7 +158,6 @@ class StubSFTPServer (SFTPServerInterface):
         return SFTP_OK
 
     def rmdir(self, path):
-        return SFTP_PERMISSION_DENIED
         path = self._realpath(path)
         try:
             os.rmdir(path)
@@ -136,7 +166,6 @@ class StubSFTPServer (SFTPServerInterface):
         return SFTP_OK
 
     def chattr(self, path, attr):
-        return SFTP_PERMISSION_DENIED
         path = self._realpath(path)
         try:
             SFTPServer.set_file_attr(path, attr)
@@ -145,7 +174,6 @@ class StubSFTPServer (SFTPServerInterface):
         return SFTP_OK
 
     def symlink(self, target_path, path):
-        return SFTP_PERMISSION_DENIED
         path = self._realpath(path)
         if (len(target_path) > 0) and (target_path[0] == '/'):
             # absolute symlink

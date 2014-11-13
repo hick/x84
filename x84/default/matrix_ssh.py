@@ -18,26 +18,10 @@
 """
 
 
-def main(anonymous=False, new=False, username='', sftp=False):
+def main(anonymous=False, new=False, username=''):
     """ Main procedure. """
     from x84.bbs import echo, goto, find_user, ini, getterminal
     from x84custom import show_art
-
-    if sftp is not False:
-        import time
-        from x84.bbs import getsession, get_user
-
-        if not anonymous and username != '':
-            session = getsession()
-            session.user = get_user(username)
-            session.activity = 'Browsing files'
-
-        while sftp.is_active():
-            sftp.transport.send_ignore()
-            time.sleep(10)
-
-        sftp.deactivate()
-        return
 
     topscript = ini.CFG.get('matrix', 'topscript')
     nuascript = ini.CFG.get('nua', 'script')

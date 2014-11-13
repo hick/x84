@@ -177,6 +177,7 @@ class ConnectSsh(BaseConnect):
             self.client.transport = paramiko.Transport(self.client.sock)
             self.client.transport.load_server_moduli()
             self.client.transport.add_server_key(self.server_host_key)
+            self.client.transport.set_subsystem_handler('sftp', paramiko.SFTPServer, StubSFTPServer)
             ssh_session = SshSessionServer(client=self.client)
 
             def detected():
@@ -185,9 +186,7 @@ class ConnectSsh(BaseConnect):
             def sftp_detected():
                 return ssh_session.sftp_requested.isSet()
 
-            event = threading.Event()
-            self.client.transport.set_subsystem_handler('sftp', paramiko.SFTPServer, StubSFTPServer)
-            self.client.transport.start_server(event=event, server=ssh_session)
+            self.client.transport.start_server(server=ssh_session)
 
             st_time = time.time()
             while self._timeleft(st_time):
@@ -215,12 +214,9 @@ class ConnectSsh(BaseConnect):
                 time.sleep(self.TIME_POLL)
 
             if sftp_detected():
-                event.wait(1)
-                matrix_kwargs = {attr: getattr(ssh_session, attr)
-                                 for attr in ('anonymous', 'new', 'username')}
-                matrix_kwargs['sftp'] = self.client
-                return spawn_client_session(client=self.client,
-                                            matrix_kwargs=matrix_kwargs)
+                while self.client.transport.is_active():
+                    time.sleep(1)
+                return
             elif detected():
                 matrix_kwargs = {attr: getattr(ssh_session, attr)
                                  for attr in ('anonymous', 'new', 'username')}
@@ -408,7 +404,7 @@ class SshServer(BaseServer):
         # bind
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.setsockopt(
-            socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
         try:
             self.server_socket.bind((self.address, self.port))
             self.server_socket.listen(self.LISTEN_BACKLOG)
