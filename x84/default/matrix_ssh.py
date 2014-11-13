@@ -17,15 +17,31 @@
  who may have already authenticated by some various means.
 """
 
+# std imports
+import logging
+import time
 
-def main(anonymous=False, new=False, username=''):
+
+def main(anonymous=False, new=False, username='', sftp=False):
     """ Main procedure. """
     from x84.bbs import echo, goto, find_user, ini, getterminal
-    from x84custom import show_art
+    try:
+        from x84custom import show_art
+    except ImportError:
+        from x84.bbs import showart as show_art
+
+    term = getterminal()
+
+    if sftp:
+        log = logging.getLogger(__name__)
+        log.debug('Serving SFTP.')
+        while True:
+            inp = term.inkey(1)
+            if inp:
+                log.debug('Got inkey: {0!r}'.format(inp))
 
     topscript = ini.CFG.get('matrix', 'topscript')
     nuascript = ini.CFG.get('nua', 'script')
-    term = getterminal()
 
     # http://www.termsys.demon.co.uk/vtansi.htm
     # disable line-wrapping
