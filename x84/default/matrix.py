@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+#coding=utf-8
 """
 Matrix/login script for x/84, https://github.com/jquast/x84
 
@@ -118,7 +120,7 @@ color_secondary = 'green'
 #: password hidden character
 hidden_char = u'\u00f7'
 
-
+###hick 这里是登陆的时候的处理， 包括提示注册和密码输入等
 def display_banner(term):
     """ Display on-connect banner and set a few sequences. """
 
@@ -163,7 +165,7 @@ def display_banner(term):
         echo(u"\r\n   Login as '{0}' is allowed."
              .format(highlight(anonymous_names[0])))
     if reset_allowed:
-        echo(u"\r\n   Forgot password? Login as '{0}'."
+        echo(u"\r\n   Hick: 忘记密码? Login as '{0}'."
              .format(highlight('reset')))
 
 
